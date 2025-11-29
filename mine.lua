@@ -219,7 +219,8 @@ end
 function prepareTorches()
     ttl.turnRight()
     -- This is inefficient but it'll work
-    while not ttl.suck("forward",maxTorches) do
+    while ttl.getItemCount("minecraft:torch") < maxTorches do
+        ttl.suck("forward",maxTorches)
         print("Waiting for torches")
         ttl.dropItem("minecraft:torch")
         sleep(refuelWaitTime)
