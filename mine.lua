@@ -1,11 +1,9 @@
 -- TODO:
---  Place Torches
---  Side Tunnels
 --  Ore Vein Detection & Following
     -- Basically check what item you obtain when you mine & then check for surrounding ores
     -- that way you're not scanning every block, which takes time
     -- Use substring matching for resource names so you don't have to list all the ores & such
---  Fix dropItem function
+--  Side Tunnels
 
 require("common")
 local mainLayerWidth = 3
@@ -25,6 +23,11 @@ local maxTorches = 64
 local refuelWaitTime = 60
 local minLayers = 30
 local maxDistance = 400
+local minLightLevel = 5
+local torchHeight = 1
+local torchInterval
+local lastPlacedTorch
+local fuelBuffer = 100
 
 function getDirEnum(axis,pos)
     if axis == "x" then
@@ -195,7 +198,7 @@ function checkIn()
     elseif dist > maxDistance then
         print("Traveled total max distance. Returning home")
         return false, true
-    elseif dist + twoLayerFuel >= fuel then
+    elseif dist + twoLayerFuel + 2 + (torchHeight-1)*torchInterval*2 + torchInterval*2 + (2 + 2*(torchHeight-1)) + fuelBuffer >= fuel then
         -- We don't have enough fuel to do another layer, so let's return home
         print("Low on fuel. Returning home.")
         return false, false
@@ -218,12 +221,13 @@ end
 
 function prepareTorches()
     ttl.turnRight()
+    ttl.suck("forward",maxTorches)
     -- This is inefficient but it'll work
     while ttl.getItemCount("minecraft:torch") < maxTorches do
-        ttl.suck("forward",maxTorches)
         print("Waiting for torches")
         ttl.dropItem("minecraft:torch")
         sleep(refuelWaitTime)
+        ttl.suck("forward",maxTorches)
     end
     ttl.turnLeft()
 end
@@ -236,11 +240,82 @@ function assertCorrectLocation()
     ttl.assertBlock("down","minecraft:chest")
 end
 
+function distFromStart()
+
+end
+
 function setup()
     -- That's all for now. Later deal with side tunnels
     twoLayerFuel = ((mainLayerHeight*mainLayerWidth)-1)*2
+    -- Torch has 14 light, decreases by 1 for each block away you are (city distance)
+    -- They combine by taking the max.
+    torchInterval = (13 - (minLightLevel + mainLayerWidth - 1 + torchHeight))*2
+    if digAxis == "x" then
+        lastPlacedTorch = homeBase.x
+    else
+        lastPlacedTorch = homeBase.z
+    end
     returnHome()
     assertCorrectLocation()
+end
+
+function findLastTorch()
+    local dist = 0
+    for i=1,torchInterval do
+        for y=1,torchHeight-1 do
+            ttl.up(false)
+        end
+        local a, block = turtle.inspectUp()
+        for y=1,torchHeight-1 do
+            ttl.down(true)
+        end
+        local x, y, z = gps.locate()
+        if ttl.distance(x,y,z,homeBase.x,homeBase.y,homeBase.z) == 0 then
+            for i2=1,i-1 do
+                ttl.forward(true)
+            end
+            break
+        end
+        if a and block.name == "minecraft:wall_torch" then
+            if digAxis == "x" then
+                lastPlacedTorch = x
+            else
+                lastPlacedTorch = z
+            end
+            for i2=1,i-1 do
+                ttl.forward(true)
+            end
+            break
+        end
+        ttl.back(true)
+        dist = i
+    end
+    for i2=1,dist do
+        ttl.forward(true)
+    end
+end
+
+function placeTorchIfNeeded()
+    local x, y, z = gps.locate()
+    local axis
+    if digAxis == "x" then
+        axis = x
+    else
+        axis = z
+    end
+    if math.abs(axis - lastPlacedTorch) >= torchInterval then
+        ttl.selectItem("minecraft:torch")
+        for i=1,torchHeight-1 do
+            ttl.up(true)
+        end
+        ttl.back(true)
+        turtle.placeUp()
+        ttl.forward(true)
+        for i=1,torchHeight-1 do
+            ttl.down(true)
+        end
+        lastPlacedTorch = axis
+    end
 end
 
 function run()
@@ -249,9 +324,11 @@ function run()
         refuel()
         prepareTorches()
         moveToStart()
+        findLastTorch()
         while true do
             -- Just tunneling for now. Add stripmining later
             mine2Layers(true)
+            placeTorchIfNeeded()
             tossTrash()
             checkedIn, reachedMax = checkIn()
             if not checkedIn then
