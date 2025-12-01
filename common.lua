@@ -35,12 +35,50 @@ function ttl.down(breakOnFail)
     failsafe(turtle.down,1,10,"Failed to move turtle down",failFunc)
 end
 
+function ttl.oppositeDir(direction)
+    if direction == "left" then return "right" end
+    if direction == "right" then return "left" end
+    if direction == "up" then return "down" end
+    if direction == "down" then return "up" end
+    if direction == "forward" then return "back" end
+    if direction == "back" then return "forward" end
+    error("Invalid direction")
+end
+
 function ttl.forward(breakOnFail)
     local failFunc = nil
     if breakOnFail then
         failFunc = turtle.dig
     end
     failsafe(turtle.forward,1,10,"Failed to move turtle forward",failFunc)
+end
+
+function ttl.move(direction,breakOnFail)
+    if direction == "forward" then
+        return ttl.forward(breakOnFail)
+    end
+    if direction == "back" then
+        return ttl.back(breakOnFail)
+    end
+    if direction == "up" then
+        return ttl.up(breakOnFail)
+    end
+    if direction == "down" then
+        return ttl.down(breakOnFail)
+    end
+    if direction == "left" then
+        turtle.turnLeft()
+        local val = ttl.forward(breakOnFail)
+        turtle.turnRight()
+        return val
+    end
+    if direction == "right" then
+        turtle.turnRight()
+        local val = ttl.forward(breakOnFail)
+        turtle.turnLeft()
+        return val
+    end
+    error("Invalid direction " .. tostring(direction))
 end
 
 function digBack()
@@ -74,11 +112,37 @@ function ttl.digDown()
 end
 
 function ttl.dig(direction)
+    -- TODO: Make more efficient by mapping the space and not testing directions you already tested
+    -- with different ore.
+    -- TODO: Replace all blocks broken with fodder if possible
     if direction == "up" then
         return ttl.digUp()
     end
     if direction == "down" then
         return ttl.digDown()
+    end
+    -- Not ideal if you're going left for a while,
+    -- but if you're digging one block and maintaining orientation,
+    -- it should be fine.
+    if direction == "right" then
+        turtle.turnRight()
+        local result = ttl.dig()
+        turtle.turnLeft()
+        return result
+    end
+    if direction == "left" then
+        turtle.turnLeft()
+        local result = ttl.dig()
+        turtle.turnRight()
+        return result
+    end
+    if direction == "back" then
+        turtle.turnLeft()
+        turtle.turnLeft()
+        local result = ttl.dig()
+        turtle.turnLeft()
+        turtle.turnLeft()
+        return result
     end
     if not turtle.dig() then return false end
     -- In case of gravel or falling item
@@ -250,9 +314,35 @@ function ttl.select(i)
     return turtle.select(i)
 end
 
+function ttl.consolidateSlot(slot)
+    if slot == nil then
+        slot = turtle.getSelectedSlot()
+    end
+    local targetDetail = turtle.getItemDetail(slot)
+    if targetDetail == nil then
+        return
+    end
+    local totalCount = targetDetail.count
+    for i=1,16 do
+        if i ~= slot then
+            local detail = turtle.getItemDetail(i)
+            local space = turtle.getItemSpace(i)
+            if detail ~= nil and detail.name == targetDetail.name and space > 0 then
+                turtle.select(slot)
+                turtle.transferTo(i,space)
+                totalCount = totalCount - math.min(detail.count,space)
+            end
+            if totalCount <= 0 then break end
+        end
+    end
+end
+
 -- Stack all items that are stackable. TODO
 function ttl.consolidateItems()
-    local itemDict = {}
+    -- TODO: Memoize and make more efficient
+    for i=16,1,-1 do
+        ttl.consolidateSlot(i)
+    end
 end
 
 -- Takes 0, 1, 2, or 3
@@ -271,7 +361,7 @@ end
 function ttl.findRotation(x1,z1,x2,z2)
     if x2 > x1 then return 0 end
     if z2 < z1 then return 1 end
-    if x1 < x2 then return 2 end
+    if x2 < x1 then return 2 end
     if z2 > z1 then return 3 end
     error("Bad Rotation Arguments: " .. tostring(x1) .. " " .. tostring(z1) .. " " .. tostring(x2) .. " " .. tostring(z2))
 end

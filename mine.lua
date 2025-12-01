@@ -19,6 +19,7 @@ local REDNET_CHANNEL = "FAILURE"
 local twoLayerFuel = 0
 local minOpenSlots = 1
 local trashables = {["minecraft:cobbled_deepslate"]=128}
+local resourceNames = {"coal","iron","copper","gold","diamond","redstone","lapis"}
 local maxTorches = 64
 local refuelWaitTime = 60
 local minLayers = 30
@@ -45,6 +46,27 @@ function getDirEnum(axis,pos)
     end
 end
 
+-- Takes a block or item name and checks if any resource name is a substring thereof
+function isResource(itemName)
+    if itemName == nil then return false end
+    for i,name in pairs(resourceNames) do
+        if string.find(itemName,name) then
+            print("Resouorce " .. itemName .. " found with item " .. name)
+            return true
+        end
+    end
+    return false
+end
+
+function digAndCheck(direction)
+    -- Select an empty slot. If you fail, return nil.
+    if not ttl.selectItem(nil) then return nil end
+    ttl.dig(direction)
+    local item = turtle.getItemDetail()
+    if item == nil then return nil end
+    return item.name
+end
+
 local dirEnum = getDirEnum(digAxis,digPositive)
 
 -- Make a bunch of variants and test their yields via /tick rate command
@@ -67,8 +89,71 @@ function refuel()
     end
 end
 
+function mineVeinSingle(a, block, direction)
+    if a and isResource(block.name) then
+        mineVein(direction)
+    end
+end
+
+function isInTunnel(x,y,z) 
+    if not (y >= homeBase.y and y < homeBase.y + mainLayerHeight) then
+        return false
+    end
+    if digAxis == "x" and digPositive == 1 then
+        return z >= homeBase.z and z < homeBase.z + mainLayerWidth
+    elseif digAxis == "x" and digPositive == -1 then
+        return z <= homeBase.z and z > homeBase.z - mainLayerWidth
+    elseif digAxis == "z" and digPositive == 1 then
+        return x <= homeBase.x and x > homeBase.x - mainLayerWidth
+    elseif digAxis == "z" and digPositive == -1 then
+        return x >= homeBase.x and x < homeBase.x + mainLayerWidth
+    end
+end
+
+function mineVein(direction)
+    -- TODO Implement
+    -- Broken block was directly in front of turtle at start
+    ttl.dig(direction)
+    ttl.move(direction,true)
+    local x, y, z = gps.locate()
+
+    local aD, blockD = turtle.inspectDown()
+    mineVeinSingle(aD,blockD,"down")
+
+    local aU, blockU = turtle.inspectUp()
+    mineVeinSingle(aU, blockU, "up")
+
+    local aF, blockF = turtle.inspect()
+    mineVeinSingle(aF, blockF, "forward")
+
+    turtle.turnLeft()
+    local aL, blockL = turtle.inspect()
+    turtle.turnRight()
+    mineVeinSingle(aL,blockL,"left")
+
+    turtle.turnRight()
+    local aR, blockR = turtle.inspect()
+    turtle.turnLeft()
+    mineVeinSingle(aR,blockR,"right")
+
+    if not isInTunnel(x,y,z) then
+        print(x,y,z,"is not in tunnel")
+        turtle.turnLeft()
+        turtle.turnLeft()
+        local aB, blockB = turtle.inspect()
+        turtle.turnLeft()
+        turtle.turnLeft()
+        mineVeinSingle(aB,blockB,"back")
+    else
+        print(x,y,z,"is in tunnel")
+    end
+
+    ttl.move(ttl.oppositeDir(direction),true)
+end
+
 -- Default position is bottom left of main layer
 function mine2Layers(isMain)
+    print("Mining 2 layers")
     local w = offshootWidth
     local h = offshootHeight
     if isMain then
@@ -83,7 +168,11 @@ function mine2Layers(isMain)
         end
         for x=1,w do
             for y=1,h do
-                ttl.dig()
+                local item = digAndCheck()
+                if isResource(item) then
+                    mineVein("forward")
+                end
+                ttl.consolidateSlot()
                 if y ~= h then
                     if x % 2 == upMod then
                         ttl.up(true)
@@ -240,10 +329,6 @@ function assertCorrectLocation()
     ttl.assertBlock("down","minecraft:chest")
 end
 
-function distFromStart()
-
-end
-
 function setup()
     -- That's all for now. Later deal with side tunnels
     twoLayerFuel = ((mainLayerHeight*mainLayerWidth)-1)*2
@@ -262,6 +347,7 @@ end
 function findLastTorch()
     local dist = 0
     for i=1,torchInterval do
+        print("Checking for torch step " .. tostring(i))
         for y=1,torchHeight-1 do
             ttl.up(false)
         end
@@ -272,9 +358,10 @@ function findLastTorch()
         local x, y, z = gps.locate()
         if ttl.distance(x,y,z,homeBase.x,homeBase.y,homeBase.z) == 0 then
             for i2=1,i-1 do
+                print("Moving back step " .. tostring(i2))
                 ttl.forward(true)
             end
-            break
+            return
         end
         if a and block.name == "minecraft:wall_torch" then
             if digAxis == "x" then
@@ -283,14 +370,16 @@ function findLastTorch()
                 lastPlacedTorch = z
             end
             for i2=1,i-1 do
+                print("Moving back step " .. tostring(i2))
                 ttl.forward(true)
             end
-            break
+            return
         end
         ttl.back(true)
         dist = i
     end
     for i2=1,dist do
+        print("Moving back step " .. tostring(i2))
         ttl.forward(true)
     end
 end
