@@ -1,8 +1,6 @@
 -- TODO:
---  Ore Vein Detection & Following
-    -- Basically check what item you obtain when you mine & then check for surrounding ores
-    -- that way you're not scanning every block, which takes time
-    -- Use substring matching for resource names so you don't have to list all the ores & such
+-- More advanced vein detection
+    -- Keep map of ores so as not to re-inspect
 --  Side Tunnels
 
 require("common")
