@@ -202,6 +202,9 @@ end
 -- For now just compatible with one central tunnel.
 function returnHome()
     local x,y,z = gps.locate()
+    if x == homeBase.x and y == homeBase.y and z == homeBase.z then
+        return
+    end
     while y > homeBase.y do
         ttl.down()
         x,y,z = gps.locate()
@@ -210,7 +213,7 @@ function returnHome()
         ttl.up()
         x,y,z = gps.locate()
     end
-    ttl.back(true)
+    ttl.back(false)
     x2,y2,z2 = gps.locate()
     ttl.forward(true)
     print(x,y,z,x2,y2,z2,ttl.findRotation(x2,z2,x,z))
